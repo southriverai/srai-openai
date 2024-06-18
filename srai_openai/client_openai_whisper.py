@@ -24,16 +24,4 @@ class ClientOpenaiWhisper:
             transcription = self.client_openai.audio.transcriptions.create(
                 model=model_id, file=file, response_format="verbose_json", timestamp_granularities=["word"]
             )
-        return json.loads(transcription.model_dump_json())
-
-    def transcription_by_wave(
-        self,
-        path_file_audio: str,
-    ) -> dict:
-        # TODO add script
-        model_id = self.get_default_model_id()
-        with open(path_file_audio, "rb") as file:
-            transcription = self.client_openai.audio.transcriptions.create(
-                model=model_id, file=file, response_format="verbose_json", timestamp_granularities=["word"]
-            )
-        return json.loads(transcription.model_dump_json())
+        return transcription.model_dump()

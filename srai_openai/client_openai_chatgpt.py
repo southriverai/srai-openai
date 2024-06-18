@@ -39,9 +39,9 @@ class PromptConfig:
         content = ""
         for message in self.list_message:
             content += message["content"]
-        if self.model == "gpt-4":
+        if self.model == "gpt-4o":
             encoding_name = "cl100k_base"
-        if self.model == "gpt-4":
+        elif self.model == "gpt-4":
             encoding_name = "cl100k_base"
         elif self.model == "gpt-4-turbo-preview":
             encoding_name = "cl100k_base"
@@ -56,7 +56,7 @@ class PromptConfig:
     def token_count_max(self) -> int:
         if self.model == "gpt-4":
             return 128000
-        if self.model == "gpt-4-turbo-preview":
+        elif self.model == "gpt-4-turbo-preview":
             return 128000
         elif self.model == "gpt-3.5-turbo":
             return 16385
