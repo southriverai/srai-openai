@@ -1,7 +1,3 @@
-import base64
-import json
-import os
-
 from srai_openai.client_openai_whisper import ClientOpenaiWhisper
 
 

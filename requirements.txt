@@ -2,3 +2,5 @@ black==23.3.0
 flake8==6.0.0
 srai-core>=0.11.12
 openai==1.12.0
+tiktoken==0.6.0
+docstring_parser==0.16
