@@ -62,7 +62,7 @@ class ClientOpenaiChatgpt:
             raise Exception("last event is not a tool call request")
 
         list_tool_call_result = []
-        for tool_call_request in prompt_config_input.list_event[-1].list_tool_call_request:  # type: ignore
+        for tool_call_request in prompt_config_input.list_event[-1].event_message["tool_calls"]:
             id = tool_call_request["id"]
             name = tool_call_request["function"]["name"]
             arguments = json.loads(tool_call_request["function"]["arguments"])
@@ -112,22 +112,17 @@ class ClientOpenaiChatgpt:
         return prompt_config_result_tools.last_message_text
 
     def prompt_for_prompt_config(self, prompt_config_input: PromptConfig) -> PromptConfig:
-        last_event = prompt_config_input.list_event[-1]
-
         completion = self.client_openai.chat.completions.create(
             model=prompt_config_input.model,
             messages=prompt_config_input.messages,  # type: ignore
             tools=prompt_config_input.tools,  # type: ignore
-            tool_choice=last_event.tool_choice,  # type: ignore
-            response_format=last_event.response_format,  # type: ignore
+            tool_choice=prompt_config_input.tool_choice,  # type: ignore
+            response_format=prompt_config_input.response_format,  # type: ignore
         )
         if completion.choices[0].finish_reason == "tool_calls":
-            list_tool_call_request = []
-            for tool_call_request in completion.choices[0].message.tool_calls:  # type: ignore
-                list_tool_call_request.append(tool_call_request.model_dump())
             return prompt_config_input.append_tool_call_request(
-                completion.choices[0].message, list_tool_call_request
-            )  # TODO we can parse these resquests directly
+                completion.choices[0].message,
+            )
         else:
             return prompt_config_input.append_assistent_message(
                 completion.choices[0].message,

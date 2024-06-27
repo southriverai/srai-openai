@@ -18,18 +18,16 @@ class ChatgptEvent:
     def __init__(
         self,
         event_type: str,
+        event_message: dict,
         *,
-        event_message: Optional[dict] = {},
         list_tool_offer: Optional[list[dict]] = None,
         tool_choice: Optional[str] = None,
-        list_tool_call_request: Optional[list[dict]] = None,
         response_format: Optional[dict] = None,
     ) -> None:
         if event_type not in ChatgptEvent.list_event_type:
             raise Exception(f"type {type} not in {str(ChatgptEvent.list_event_type)}")
-        if event_type == ChatgptEvent.SYSTEM_MESSAGE or event_type == ChatgptEvent.USER_MESSAGE:
-            if event_message == {}:
-                raise Exception("Event_message is empty")
+        if event_message == {}:
+            raise Exception("Event_message is empty")
         if response_format is not None:
             if event_type != ChatgptEvent.USER_MESSAGE:
                 raise Exception("can only format response for user messages")
@@ -44,7 +42,6 @@ class ChatgptEvent:
         self.event_message = event_message
         self.list_tool_offer = list_tool_offer
         self.tool_choice = tool_choice
-        self.list_tool_call_request = list_tool_call_request
         self.response_format = response_format
 
     def is_text_message(self) -> bool:
@@ -68,7 +65,7 @@ class ChatgptEvent:
             else:
                 return f"User message:\n    {content}"
         elif self.event_type == ChatgptEvent.TOOL_CALL_REQUEST:
-            return f"Tool call request:\n    {json.dumps(self.list_tool_call_request, indent=4)}"
+            return f"Tool call request:\n    {json.dumps(self.event_message, indent=4)}"
         elif self.event_type == ChatgptEvent.TOOL_CALL_RESULT:
             return f"Tool call result:\n    {json.dumps(self.event_message, indent=4)}"
         else:
@@ -94,8 +91,28 @@ class PromptConfig:
         self.list_event = copy(list_event)
 
     @property
+    def last_event(self) -> ChatgptEvent:
+        return self.list_event[-1]
+
+    @property
     def tools(self) -> Optional[List[dict]]:
-        return self.list_event[-1].list_tool_offer
+        return self.last_event.list_tool_offer
+
+    @property
+    def tool_choice(self) -> Optional[str]:
+        return self.last_event.tool_choice
+
+    @property
+    def response_format(self) -> Optional[dict]:
+        return self.last_event.response_format
+
+    @property
+    def tool_calls(self) -> List[dict]:
+        if self.last_event.event_type != ChatgptEvent.TOOL_CALL_REQUEST:
+            raise Exception("last event is not a tool call request")
+        if self.last_event.event_message is None:
+            raise Exception("last event message is None")
+        return self.last_event.event_message["tool_calls"]
 
     @property
     def last_message_content(self) -> str:
@@ -197,12 +214,10 @@ class PromptConfig:
     def append_tool_call_request(
         self,
         message: ChatCompletionMessage,
-        list_tool_call_request: List[dict],
     ) -> "PromptConfig":
         event = ChatgptEvent(
             ChatgptEvent.TOOL_CALL_REQUEST,
             event_message=message.model_dump(),
-            list_tool_call_request=list_tool_call_request,
         )
         prompt_config = PromptConfig(self.model, self.list_event)
         prompt_config.list_event.append(event)
