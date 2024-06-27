@@ -25,3 +25,29 @@ class ClientOpenaiWhisper:
                 model=model_id, file=file, response_format="verbose_json", timestamp_granularities=["word"]
             )
         return transcription.model_dump()
+
+    def text_to_speech(
+        self,
+        text: str,
+        *,
+        model_id: Optional[str] = None,
+    ) -> bytes:
+        if model_id is None:
+            model_id = self.get_default_model_id()
+        speech = self.client_openai.audio.speech.create(
+            model=model_id,
+            voice="alloy",
+            response_format="mp3",
+            input=text,
+        )
+        return speech.write_to_file("temp.mp3")  # TODO fix this or stream output
+
+
+# from pathlib import Path
+# import openai
+
+# speech_file_path = Path(__file__).parent / "speech.mp3"
+# response = openai.audio.speech.create(
+#     model="tts-1", voice="alloy", input="The quick brown fox jumped over the lazy dog."
+# )
+# response.stream_to_file(speech_file_path)

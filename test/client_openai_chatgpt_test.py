@@ -103,10 +103,10 @@ def test_prompt_config():
 
 
 if __name__ == "__main__":
-    # test_list_model_id()
-    # test_prompt_default()
-    # test_prompt_default_json()
-    # test_prompt_default_image()
-    # test_prompt_default_tool_enum()
+    test_list_model_id()
+    test_prompt_default()
+    test_prompt_default_json()
+    test_prompt_default_image()
+    test_prompt_default_tool_enum()
     test_prompt_default_tool_literal()
-    # test_prompt_config()
+    test_prompt_config()

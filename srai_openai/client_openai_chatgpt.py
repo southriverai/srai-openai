@@ -1,5 +1,5 @@
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from openai import OpenAI
 from srai_core.tools_env import get_string_from_env
@@ -35,7 +35,6 @@ class ClientOpenaiChatgpt:
 
         prompt_config_input = PromptConfig.create(model, system_message_content)
         prompt_config_input = prompt_config_input.append_user_message(user_message_content, image_base64)
-
         return self.prompt_for_prompt_config(prompt_config_input).last_message_text
 
     def prompt_default_json(
@@ -114,6 +113,7 @@ class ClientOpenaiChatgpt:
 
     def prompt_for_prompt_config(self, prompt_config_input: PromptConfig) -> PromptConfig:
         last_event = prompt_config_input.list_event[-1]
+
         completion = self.client_openai.chat.completions.create(
             model=prompt_config_input.model,
             messages=prompt_config_input.messages,  # type: ignore
@@ -125,13 +125,31 @@ class ClientOpenaiChatgpt:
             list_tool_call_request = []
             for tool_call_request in completion.choices[0].message.tool_calls:  # type: ignore
                 list_tool_call_request.append(tool_call_request.model_dump())
-            return prompt_config_input.append_tool_call_request(completion.choices[0].message, list_tool_call_request)
+            return prompt_config_input.append_tool_call_request(
+                completion.choices[0].message, list_tool_call_request
+            )  # TODO we can parse these resquests directly
         else:
             return prompt_config_input.append_assistent_message(
-                completion.choices[0].message.content,  # type: ignore
+                completion.choices[0].message,
             )
+
+    def options_for_prompt_config(
+        self, prompt_config_input: PromptConfig, max_tokens: Optional[int] = 1
+    ) -> List[Tuple[float, PromptConfig]]:
+        completion = self.client_openai.chat.completions.create(
+            model=prompt_config_input.model,
+            messages=prompt_config_input.messages,  # type: ignore
+            logprobs=True,
+            top_logprobs=20,
+            max_tokens=1,
+        )
+        model_dump = completion.choices[0].model_dump()
+        list_option = []
+        for option in model_dump["logprobs"]["content"][0]["top_logprobs"]:
+            prompt_config_result = prompt_config_input.append_assistent_message(option["token"])
+            list_option.append((option["logprob"], prompt_config_result))
+        return list_option
 
     def prompt_default_image(self, prompt_config_input: PromptConfig) -> str:
         prompt_config_result = self.prompt_for_prompt_config(prompt_config_input)
-        return prompt_config_result.last_message_text
         return prompt_config_result.last_message_text

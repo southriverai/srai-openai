@@ -3,14 +3,17 @@ from copy import copy
 from typing import List, Optional
 
 import tiktoken
+from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
 
 class ChatgptEvent:
     SYSTEM_MESSAGE = "system_message"
+    ASSISTENT_MESSAGE = "assistent_message"
     USER_MESSAGE = "user_message"
+
     TOOL_CALL_REQUEST = "tool_call_request"
     TOOL_CALL_RESULT = "tool_call_result"
-    list_event_type = [SYSTEM_MESSAGE, USER_MESSAGE, TOOL_CALL_REQUEST, TOOL_CALL_RESULT]
+    list_event_type = [SYSTEM_MESSAGE, ASSISTENT_MESSAGE, USER_MESSAGE, TOOL_CALL_REQUEST, TOOL_CALL_RESULT]
 
     def __init__(
         self,
@@ -45,13 +48,23 @@ class ChatgptEvent:
         self.response_format = response_format
 
     def is_text_message(self) -> bool:
-        return self.event_type in [ChatgptEvent.SYSTEM_MESSAGE, ChatgptEvent.USER_MESSAGE]
+        return self.event_type in [
+            ChatgptEvent.SYSTEM_MESSAGE,
+            ChatgptEvent.ASSISTENT_MESSAGE,
+            ChatgptEvent.USER_MESSAGE,
+        ]
 
     def __str__(self) -> str:
-        if self.event_type == ChatgptEvent.SYSTEM_MESSAGE or self.event_type == ChatgptEvent.USER_MESSAGE:
+        if (
+            self.event_type == ChatgptEvent.SYSTEM_MESSAGE
+            or self.event_type == ChatgptEvent.ASSISTENT_MESSAGE
+            or self.event_type == ChatgptEvent.USER_MESSAGE
+        ):
             content = self.event_message["content"][0]["text"]  # type: ignore
             if self.event_type == ChatgptEvent.SYSTEM_MESSAGE:
                 return f"System message:\n    {content}"
+            elif self.event_type == ChatgptEvent.ASSISTENT_MESSAGE:
+                return f"Assistent message:\n    {content}"
             else:
                 return f"User message:\n    {content}"
         elif self.event_type == ChatgptEvent.TOOL_CALL_REQUEST:
@@ -85,37 +98,43 @@ class PromptConfig:
         return self.list_event[-1].list_tool_offer
 
     @property
-    def last_message_text(self) -> str:
-        return self.list_text_message[-1]["content"][0]["text"]  # TODO deal with messages without text
-
-    @property
     def last_message_content(self) -> str:
         return self.messages[-1]["content"]
 
     @property
+    def last_message_text(self) -> str:
+        return self.list_text_message[-1]["content"][0]["text"]
+
+    @property
     def list_text_message(self) -> List[dict]:
-        return [event.event_message for event in self.list_event if event.is_text_message()]
+        list_message = []
+        for event in self.list_event:
+            if event.is_text_message():
+                list_message.append(event.event_message)
+        return list_message
 
     @property
     def messages(self) -> List[dict]:
         return [event.event_message for event in self.list_event]  # type: ignore
 
     @staticmethod
-    def create_message(role: str, message_content: str) -> dict:
+    def create_message_text(role: str, message_text: str) -> dict:
+        message_content = [
+            {
+                "type": "text",
+                "text": message_text,
+            },
+        ]
+        return PromptConfig.create_message(role, message_content)
+
+    @staticmethod
+    def create_message(role: str, message_content: List[dict]) -> dict:
         if role not in ["system", "user", "assistant"]:
             raise Exception(f"role {role} not in [system, user, assistant]")
-        return {
-            "role": role,
-            "content": [
-                {
-                    "type": "text",
-                    "text": message_content,
-                },
-            ],
-        }
+        return {"role": role, "content": message_content}
 
     def append_system_message(self, message_content: str) -> "PromptConfig":
-        event_message = PromptConfig.create_message("system", message_content)
+        event_message = PromptConfig.create_message_text("system", message_content)
         event = ChatgptEvent(ChatgptEvent.SYSTEM_MESSAGE, event_message=event_message)
         prompt_config = PromptConfig(self.model, self.list_event)
         prompt_config.list_event.append(event)
@@ -123,13 +142,13 @@ class PromptConfig:
 
     def append_user_message(
         self,
-        message_content: str,
+        message_text: str,
         image_base64: Optional[str] = None,
         response_format: Optional[dict] = None,
         list_tool_offer: Optional[list[dict]] = None,
         tool_choice: Optional[str] = None,
     ) -> "PromptConfig":
-        event_message = PromptConfig.create_message("user", message_content)
+        event_message = PromptConfig.create_message_text("user", message_text)
         if image_base64 is not None:
             if self.model != "gpt-4o":
                 raise Exception(f"model {self.model} not supported for image")
@@ -150,17 +169,39 @@ class PromptConfig:
         prompt_config.list_event.append(event)
         return prompt_config
 
-    def append_assistent_message(self, message_content: str, list_tool_call_result: List[dict] = []) -> "PromptConfig":
-        event_message = PromptConfig.create_message("assistant", message_content)
-        event = ChatgptEvent(ChatgptEvent.SYSTEM_MESSAGE, event_message=event_message)
+    def append_assistent_message(
+        self, message: ChatCompletionMessage, list_tool_call_result: List[dict] = []
+    ) -> "PromptConfig":
+        if message.role != "assistant":
+            raise Exception("message role is not assistant")
+        message_content = message.model_dump()["content"]
+        if type(message_content) is str:
+            event_message = PromptConfig.create_message_text("assistant", message_content)
+        else:
+            event_message = PromptConfig.create_message("assistant", message_content)
+        event = ChatgptEvent(ChatgptEvent.ASSISTENT_MESSAGE, event_message=event_message)
         prompt_config = PromptConfig(self.model, self.list_event)
         prompt_config.list_event.append(event)
         return prompt_config
 
-    def append_tool_call_request(self, event_message: dict, list_tool_call_request: List[dict]) -> "PromptConfig":
+    def append_assistent_token(self, token: str) -> "PromptConfig":
+        if self.list_event[-1].event_type != ChatgptEvent.ASSISTENT_MESSAGE:
+            raise Exception("last event is not an assistent message")
+        event_message_text = self.list_event[-1].event_message["content"][0]["text"]
+        event_message = PromptConfig.create_message("assistant", event_message_text + token)
+        event = ChatgptEvent(ChatgptEvent.ASSISTENT_MESSAGE, event_message=event_message)
+        prompt_config = PromptConfig(self.model, self.list_event[:-1])
+        prompt_config.list_event.append(event)
+        return prompt_config
+
+    def append_tool_call_request(
+        self,
+        message: ChatCompletionMessage,
+        list_tool_call_request: List[dict],
+    ) -> "PromptConfig":
         event = ChatgptEvent(
             ChatgptEvent.TOOL_CALL_REQUEST,
-            event_message=event_message,
+            event_message=message.model_dump(),
             list_tool_call_request=list_tool_call_request,
         )
         prompt_config = PromptConfig(self.model, self.list_event)
@@ -180,12 +221,6 @@ class PromptConfig:
         prompt_config = PromptConfig(self.model, self.list_event)
         prompt_config.list_event.extend(list_event)
         return prompt_config
-
-    def __str__(self) -> str:
-        string_description = ""
-        for event in self.list_event:
-            string_description += str(event) + "\n"
-        return string_description
 
     def token_count(self) -> int:
         content = ""
@@ -218,10 +253,15 @@ class PromptConfig:
     @staticmethod
     def create(
         model: str,
-        system_message_content: str,
+        system_message_text: str,
     ) -> "PromptConfig":
-        event_message = PromptConfig.create_message("system", system_message_content)
+        event_message = PromptConfig.create_message_text("system", system_message_text)
         event = ChatgptEvent("system_message", event_message=event_message)
 
         return PromptConfig(model, [event])
-        return PromptConfig(model, [event])
+
+    def __str__(self) -> str:
+        string_description = ""
+        for event in self.list_event:
+            string_description += str(event) + "\n"
+        return string_description
