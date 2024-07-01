@@ -73,3 +73,7 @@ client = ClientOpenaiWhisper()
 transcription = client.transcription("test.mp3")
 print(transcription["text"])
 ```
+
+## Changelog
+Version 0.8.0
+-reenabled serialization of prompt configs

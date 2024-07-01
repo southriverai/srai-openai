@@ -10,7 +10,6 @@ class ChatgptEvent:
     SYSTEM_MESSAGE = "system_message"
     ASSISTENT_MESSAGE = "assistent_message"
     USER_MESSAGE = "user_message"
-
     TOOL_CALL_REQUEST = "tool_call_request"
     TOOL_CALL_RESULT = "tool_call_result"
     list_event_type = [SYSTEM_MESSAGE, ASSISTENT_MESSAGE, USER_MESSAGE, TOOL_CALL_REQUEST, TOOL_CALL_RESULT]
@@ -71,23 +70,48 @@ class ChatgptEvent:
         else:
             return f"Event Type: {self.event_type}, Event Content: {self.event_message}"
 
+    def to_dict(self) -> dict:
+        dict_event = {
+            "type": self.event_type,
+            "message": self.event_message,
+        }
+        if self.list_tool_offer is not None:
+            dict_event["list_tool_offer"] = self.list_tool_offer
+        if self.tool_choice is not None:
+            dict_event["tool_choice"] = self.tool_choice
+        if self.response_format is not None:
+            dict_event["response_format"] = self.response_format
+        return dict_event
+
+    @staticmethod
+    def from_dict(event_dict: dict) -> "ChatgptEvent":
+        event_type = event_dict["type"]
+        event_message = event_dict["message"]
+        list_tool_offer = event_dict.get("list_tool_offer")
+        tool_choice = event_dict.get("tool_choice")
+        response_format = event_dict.get("response_format")
+        return ChatgptEvent(
+            event_type,
+            event_message,
+            list_tool_offer=list_tool_offer,
+            tool_choice=tool_choice,
+            response_format=response_format,
+        )
+
 
 class PromptConfig:
     def __init__(
         self,
-        model,
+        model_id: str,
         list_event: List[ChatgptEvent],
         tool_choice: Optional[str] = None,
     ) -> None:
 
-        if model is None:
+        if model_id is None:
             raise Exception("model is None")
         if list_event is None:
             raise Exception("list_event is None")
-        if tool_choice is not None:
-            if tool_choice not in ["none", "auto"]:
-                raise Exception(f"tool_choice {tool_choice} not in [none, auto]")
-        self.model = model
+        self.model_id = model_id
         self.list_event = copy(list_event)
 
     @property
@@ -153,7 +177,7 @@ class PromptConfig:
     def append_system_message(self, message_content: str) -> "PromptConfig":
         event_message = PromptConfig.create_message_text("system", message_content)
         event = ChatgptEvent(ChatgptEvent.SYSTEM_MESSAGE, event_message=event_message)
-        prompt_config = PromptConfig(self.model, self.list_event)
+        prompt_config = PromptConfig(self.model_id, self.list_event)
         prompt_config.list_event.append(event)
         return prompt_config
 
@@ -167,8 +191,8 @@ class PromptConfig:
     ) -> "PromptConfig":
         event_message = PromptConfig.create_message_text("user", message_text)
         if image_base64 is not None:
-            if self.model != "gpt-4o":
-                raise Exception(f"model {self.model} not supported for image")
+            if self.model_id != "gpt-4o":
+                raise Exception(f"model_id: {self.model_id} not supported for image")
             event_message["content"].append(
                 {
                     "type": "image_url",
@@ -182,7 +206,7 @@ class PromptConfig:
             list_tool_offer=list_tool_offer,
             tool_choice=tool_choice,
         )
-        prompt_config = PromptConfig(self.model, self.list_event)
+        prompt_config = PromptConfig(self.model_id, self.list_event)
         prompt_config.list_event.append(event)
         return prompt_config
 
@@ -197,7 +221,7 @@ class PromptConfig:
         else:
             event_message = PromptConfig.create_message("assistant", message_content)
         event = ChatgptEvent(ChatgptEvent.ASSISTENT_MESSAGE, event_message=event_message)
-        prompt_config = PromptConfig(self.model, self.list_event)
+        prompt_config = PromptConfig(self.model_id, self.list_event)
         prompt_config.list_event.append(event)
         return prompt_config
 
@@ -207,7 +231,7 @@ class PromptConfig:
         event_message_text = self.list_event[-1].event_message["content"][0]["text"]
         event_message = PromptConfig.create_message("assistant", event_message_text + token)
         event = ChatgptEvent(ChatgptEvent.ASSISTENT_MESSAGE, event_message=event_message)
-        prompt_config = PromptConfig(self.model, self.list_event[:-1])
+        prompt_config = PromptConfig(self.model_id, self.list_event[:-1])
         prompt_config.list_event.append(event)
         return prompt_config
 
@@ -219,7 +243,7 @@ class PromptConfig:
             ChatgptEvent.TOOL_CALL_REQUEST,
             event_message=message.model_dump(),
         )
-        prompt_config = PromptConfig(self.model, self.list_event)
+        prompt_config = PromptConfig(self.model_id, self.list_event)
         prompt_config.list_event.append(event)
         return prompt_config
 
@@ -233,7 +257,7 @@ class PromptConfig:
                 "content": tool_call_result["result"],
             }
             list_event.append(ChatgptEvent(ChatgptEvent.TOOL_CALL_RESULT, event_message=message))
-        prompt_config = PromptConfig(self.model, self.list_event)
+        prompt_config = PromptConfig(self.model_id, self.list_event)
         prompt_config.list_event.extend(list_event)
         return prompt_config
 
@@ -241,39 +265,51 @@ class PromptConfig:
         content = ""
         for message in self.messages:
             content += message["content"]
-        if self.model == "gpt-4o":
+        if self.model_id == "gpt-4o":
             encoding_name = "cl100k_base"
-        elif self.model == "gpt-4":
+        elif self.model_id == "gpt-4":
             encoding_name = "cl100k_base"
-        elif self.model == "gpt-4-turbo-preview":
+        elif self.model_id == "gpt-4-turbo-preview":
             encoding_name = "cl100k_base"
-        elif self.model == "gpt-3.5-turbo":
+        elif self.model_id == "gpt-3.5-turbo":
             encoding_name = "cl100k_base"
         else:
-            raise Exception(f"model {self.model} not supported")
+            raise Exception(f"model {self.model_id} not supported")
         encoding = tiktoken.get_encoding(encoding_name)
         num_tokens = len(encoding.encode(content))
         return num_tokens
 
     def token_count_max(self) -> int:
-        if self.model == "gpt-4":
+        if self.model_id == "gpt-4":
             return 128000
-        elif self.model == "gpt-4-turbo-preview":
+        elif self.model_id == "gpt-4-turbo-preview":
             return 128000
-        elif self.model == "gpt-3.5-turbo":
+        elif self.model_id == "gpt-3.5-turbo":
             return 16385
         else:
-            raise Exception(f"model {self.model} not supported")
+            raise Exception(f"model {self.model_id} not supported")
 
     @staticmethod
     def create(
-        model: str,
+        model_id: str,
         system_message_text: str,
     ) -> "PromptConfig":
         event_message = PromptConfig.create_message_text("system", system_message_text)
         event = ChatgptEvent("system_message", event_message=event_message)
 
-        return PromptConfig(model, [event])
+        return PromptConfig(model_id, [event])
+
+    def to_dict(self) -> dict:
+        return {
+            "model_id": self.model_id,
+            "list_event": [event.to_dict() for event in self.list_event],
+        }
+
+    @staticmethod
+    def from_dict(prompt_config_dict: dict) -> "PromptConfig":
+        model_id = prompt_config_dict["model_id"]
+        list_event = [ChatgptEvent.from_dict(event_dict) for event_dict in prompt_config_dict["list_event"]]
+        return PromptConfig(model_id, list_event)
 
     def __str__(self) -> str:
         string_description = ""
