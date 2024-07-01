@@ -113,7 +113,7 @@ class ClientOpenaiChatgpt:
 
     def prompt_for_prompt_config(self, prompt_config_input: PromptConfig) -> PromptConfig:
         completion = self.client_openai.chat.completions.create(
-            model=prompt_config_input.model,
+            model=prompt_config_input.model_id,
             messages=prompt_config_input.messages,  # type: ignore
             tools=prompt_config_input.tools,  # type: ignore
             tool_choice=prompt_config_input.tool_choice,  # type: ignore
@@ -132,7 +132,7 @@ class ClientOpenaiChatgpt:
         self, prompt_config_input: PromptConfig, max_tokens: Optional[int] = 1
     ) -> List[Tuple[float, PromptConfig]]:
         completion = self.client_openai.chat.completions.create(
-            model=prompt_config_input.model,
+            model=prompt_config_input.model_id,
             messages=prompt_config_input.messages,  # type: ignore
             logprobs=True,
             top_logprobs=20,

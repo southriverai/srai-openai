@@ -75,5 +75,8 @@ print(transcription["text"])
 ```
 
 ## Changelog
+Version 0.8.1
+- Bug fix on the client
+
 Version 0.8.0
--reenabled serialization of prompt configs
+- Reenabled serialization of prompt configs
